@@ -92,7 +92,7 @@
         kubectl version --client && \
         minikube status && \
         helm version && \
-        netstat -tuln | grep 8001
+        ss -tuln | grep 8001
       register: install_verify
       changed_when: false
       when: not ansible_check_mode
