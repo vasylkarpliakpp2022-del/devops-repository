@@ -70,30 +70,42 @@
 
     # --- НОВІ КРОКИ ДЛЯ ПРОКСІ ТА ДОСТУПУ ---
 
-    # 8. Увімкнення Dashboard (опційно, для наочності)
+    # 8. Увімкнення Dashboard
     - name: Enable Minikube Dashboard
       command: minikube addons enable dashboard
       when: not ansible_check_mode
       changed_when: false
 
-    # 9. Запуск kubectl proxy з явним KUBECONFIG та логуванням
-    # 9. Запуск kubectl proxy з явним KUBECONFIG та логуванням
-    - name: Start kubectl proxy in background
-      shell: |
-        pkill -f '[k]ubectl proxy' || true
-        sleep 2
-        export KUBECONFIG=/root/.kube/config
-        setsid nohup kubectl proxy --address='0.0.0.0' --port=8001 --accept-hosts='.*' </dev/null > /var/log/kubectl-proxy.log 2>&1 &
-      args:
-        executable: /bin/bash
-      async: 10
-      poll: 0
+    # 9. Створення Systemd сервісу для kubectl proxy (НАДІЙНИЙ ВАРІАНТ)
+    - name: Create systemd service for kubectl proxy
+      copy:
+        dest: /etc/systemd/system/kubectl-proxy.service
+        content: |
+          [Unit]
+          Description=Kubernetes API Proxy
+          After=network.target
+
+          [Service]
+          User=root
+          Environment=KUBECONFIG=/root/.kube/config
+          ExecStart=/usr/local/bin/kubectl proxy --address='0.0.0.0' --port=8001 --accept-hosts='.*'
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start and enable kubectl proxy service
+      systemd:
+        daemon_reload: yes
+        name: kubectl-proxy
+        enabled: yes
+        state: restarted
       when: not ansible_check_mode
-      changed_when: false
 
     # ----------------------------------------
 
-    # 10. Перевірка встановлення інструментів (без перевірки порту через ss)
+    # 10. Перевірка встановлення інструментів
     - name: Verify CLI Tools Installation
       shell: |
         kubectl version --client && \
