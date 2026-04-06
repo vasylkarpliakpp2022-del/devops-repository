@@ -1,6 +1,7 @@
 name: "Task 2: Ansible Deploy"
 
 on:
+  # Автозапуск після успішного Terraform або вручну [cite: 31]
   workflow_run:
     workflows: ["Task 1: Terraform Deploy"]
     types: [completed]
@@ -9,32 +10,30 @@ on:
 jobs:
   ansible:
     runs-on: ubuntu-latest
-    # Виконується, якщо Terraform успішний або запущено вручну
+    # Запуск лише при успіху попереднього етапу
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Налаштування доступу до ВМ через SSH-ключ [cite: 41]
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          # Додаємо IP у відомі хости, щоб Ansible не питав підтвердження
           ssh-keyscan -H ${{ secrets.DROPLET_IP }} >> ~/.ssh/known_hosts
 
       - name: Install Ansible
         run: sudo apt-get update && sudo apt-get install -y ansible
 
-      # ВИМОГА: Перевірка без встановлення (Dry-run)
-      # Додано шлях task2/playbook.yml
+      # Dry-run: перевірка конфігурації без внесення змін [cite: 38, 39]
       - name: Ansible Lint/Check
         run: |
           ansible-playbook -i '${{ secrets.DROPLET_IP }},' task2/playbook.yml --user root --private-key ~/.ssh/id_rsa --check
 
-      # РЕАЛЬНЕ ВСТАНОВЛЕННЯ
-      # Додано шлях task2/playbook.yml
+      # Основне розгортання K8s, Minikube та Helm [cite: 32, 40]
       - name: Run Ansible Playbook
         run: |
           ansible-playbook -i '${{ secrets.DROPLET_IP }},' task2/playbook.yml --user root --private-key ~/.ssh/id_rsa

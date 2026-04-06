@@ -1,6 +1,7 @@
 name: "Task 3: App Deploy to K8s"
 
 on:
+  # Тригери: пуш у гілки, тег 1.0.0 або ручний запуск
   push:
     branches: [ "develop", "main" ]
     tags: [ "1.0.0" ]
@@ -10,18 +11,21 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     steps:
+      # Отримуємо код застосунку з репозиторію
       - name: Checkout app code
         uses: actions/checkout@v4
         with:
           repository: 'YulianSalo/devops-exam-pt2'
           ref: ${{ (github.ref_name == 'main' && 'develop') || github.ref_name }}
 
+      # Авторизація на Docker Hub
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Збірка та пуш Docker-образу з відповідним тегом (dev або 1.0.0)
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -34,9 +38,11 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      # Отримуємо маніфести (інфраструктурний код)
       - name: Checkout infrastructure code
         uses: actions/checkout@v4
 
+      # Налаштування SSH для доступу до Droplet
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
@@ -44,87 +50,62 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.DROPLET_IP }} >> ~/.ssh/known_hosts
 
+      # Перевірка здоров'я Minikube та автозапуск при потребі
       - name: Ensure Minikube is Running
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "
-            # Перевіряємо, чи фактично відповідає Kubernetes API
             if ! kubectl cluster-info > /dev/null 2>&1; then
-              echo 'Minikube is not responding or broken. Restarting...'
               minikube delete || true
-              
-              # Запускаємо кластер
               minikube start --driver=docker --force --memory=1900mb --cpus=2
-              
-              echo 'Waiting for node to become Ready...'
-              # Чекаємо, поки нода підніметься
               kubectl wait --for=condition=Ready nodes --all --timeout=60s || sleep 30
-            else
-              echo 'Minikube is already running and healthy.'
             fi
-            
-            # Фінальна перевірка
-            kubectl cluster-info || (echo 'Cluster still not responding' && exit 1)
           "
 
+      # Динамічна генерація маніфесту (заміна dev на release через sed)
       - name: Prepare Deployment Manifest
         run: |
           export DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
           if [[ "${{ github.ref_name }}" == "1.0.0" ]]; then
-            if [ ! -f task3/release-deployment.yaml ]; then
-              sed 's/namespace: dev/namespace: release/g; s/name: dev/name: release/g; s/app-dev/app-release/g; s/app-service-dev/app-service-release/g; s/:dev/:1.0.0/g' task3/dev-deployment.yaml > task3/release-deployment.yaml
-            fi
+            sed 's/namespace: dev/namespace: release/g; s/name: dev/name: release/g; s/app-dev/app-release/g; s/app-service-dev/app-service-release/g; s/:dev/:1.0.0/g' task3/dev-deployment.yaml > task3/release-deployment.yaml
             export FILE_NAME="release-deployment.yaml"
           else
             export FILE_NAME="dev-deployment.yaml"
           fi
-          
           envsubst < task3/$FILE_NAME > final_deploy.yaml
-          echo "FILE_NAME_USED=$FILE_NAME" >> $GITHUB_ENV
 
+      # ВИМОГА: Перевірка валідності маніфесту без розгортання
       - name: Kubernetes Dry-run Check
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "kubectl apply -f - --dry-run=client" < final_deploy.yaml
 
+      # Реальне розгортання в Kubernetes
       - name: Deploy to Minikube
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "kubectl apply -f -" < final_deploy.yaml
 
+      # Створення/оновлення Systemd-сервісу для стабільного прокидання портів
       - name: Setup Port-Forwarding via Systemd
         run: |
-          # Визначаємо змінні залежно від гілки/тегу
           PORT=${{ github.ref_name == '1.0.0' && '8003' || '8002' }}
           NS=${{ github.ref_name == '1.0.0' && 'release' || 'dev' }}
           SVC_NAME=${{ github.ref_name == '1.0.0' && 'app-service-release' || 'app-service-dev' }}
           
-          # Даємо час K8s на запуск Pod'ів
-          echo "Waiting for Pods to start..."
-          sleep 15
-          
-          # Створюємо bash-скрипт прямо на GitHub Runner
           cat <<EOF > setup-pf.sh
           #!/bin/bash
-          # Цей код створить systemd-сервіс для конкретного порту
           cat <<INNER_EOF > /etc/systemd/system/port-forward-\$PORT.service
           [Unit]
-          Description=Kubernetes Port Forward for \$SVC_NAME on port \$PORT
+          Description=K8s Port Forward \$PORT
           After=network.target
-
           [Service]
           User=root
           Environment=KUBECONFIG=/root/.kube/config
           ExecStart=/usr/local/bin/kubectl port-forward --address 0.0.0.0 svc/\$SVC_NAME \$PORT:80 -n \$NS
           Restart=always
-          RestartSec=3
-
           [Install]
           WantedBy=multi-user.target
           INNER_EOF
-          
-          # Перезавантажуємо systemd та запускаємо наш новий сервіс
           systemctl daemon-reload
           systemctl enable port-forward-\$PORT.service
           systemctl restart port-forward-\$PORT.service
           EOF
-          
-          # Виконуємо цей згенерований скрипт на твоєму сервері через SSH
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "PORT=$PORT SVC_NAME=$SVC_NAME NS=$NS bash -s" < setup-pf.sh
