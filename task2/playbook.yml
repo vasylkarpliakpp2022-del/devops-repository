@@ -31,6 +31,8 @@
         name: docker
         state: started
         enabled: yes
+      # Пропускаємо в режимі check, бо сервіс ще не встановлено фізично
+      when: not ansible_check_mode
 
     # 3. Встановлення kubectl (Kubernetes CLI)
     - name: Download kubectl binary
@@ -53,7 +55,7 @@
       args:
         creates: /usr/local/bin/helm
 
-    # 6. Налаштування прав для користувача (щоб запускати minikube без sudo)
+    # 6. Налаштування прав для користувача
     - name: Add current user to docker group
       user:
         name: root
@@ -65,6 +67,8 @@
       command: minikube start --driver=docker --force
       become: yes
       changed_when: false
+      # Пропускаємо в режимі check, бо docker ще не працює
+      when: not ansible_check_mode
 
     # 8. Перевірка встановлення компонентів (Validation)
     - name: Verify Installation
@@ -74,7 +78,10 @@
         helm version
       register: install_verify
       changed_when: false
+      # Пропускаємо в режимі check, бо команди ще недоступні
+      when: not ansible_check_mode
 
     - name: Show Verification Result
       debug:
         msg: "{{ install_verify.stdout_lines }}"
+      when: not ansible_check_mode
