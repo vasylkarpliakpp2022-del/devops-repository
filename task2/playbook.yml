@@ -3,7 +3,6 @@
   hosts: all
   become: yes
   vars:
-    # Параметричне завдання версій (можна змінювати за потреби)
     minikube_version: "latest"
     helm_version: "latest"
 
@@ -20,7 +19,7 @@
           - conntrack
         state: present
 
-    # 2. Встановлення Docker (використовуємо його як драйвер для Minikube)
+    # 2. Встановлення Docker
     - name: Install Docker
       apt:
         name: docker.io
@@ -31,10 +30,9 @@
         name: docker
         state: started
         enabled: yes
-      # Пропускаємо в режимі check, бо сервіс ще не встановлено фізично
       when: not ansible_check_mode
 
-    # 3. Встановлення kubectl (Kubernetes CLI)
+    # 3. Встановлення kubectl
     - name: Download kubectl binary
       get_url:
         url: "https://dl.k8s.io/release/{{ lookup('pipe', 'curl -L -s https://dl.k8s.io/release/stable.txt') }}/bin/linux/amd64/kubectl"
@@ -61,26 +59,42 @@
         name: root
         groups: docker
         append: yes
-      # ДОДАЙ ЦЕЙ РЯДОК:
       when: not ansible_check_mode
 
-    # 7. Запуск Minikube (вимога для перевірки встановлення)
+    # 7. Запуск Minikube
     - name: Start Minikube with Docker driver
       command: minikube start --driver=docker --force
       become: yes
       changed_when: false
-      # Пропускаємо в режимі check, бо docker ще не працює
       when: not ansible_check_mode
 
-    # 8. Перевірка встановлення компонентів (Validation)
+    # --- НОВІ КРОКИ ДЛЯ ПРОКСІ ТА ДОСТУПУ ---
+
+    # 8. Увімкнення Dashboard (опційно, для наочності)
+    - name: Enable Minikube Dashboard
+      command: minikube addons enable dashboard
+      when: not ansible_check_mode
+      changed_when: false
+
+    # 9. Прокидання проксі (Proxy) для доступу ззовні
+    # Використовуємо порт 8001, який ми відкрили в Terraform
+    - name: Start kubectl proxy in background
+      shell: |
+        nohup kubectl proxy --address='0.0.0.0' --port=8001 --accept-hosts='.*' > /dev/null 2>&1 &
+      when: not ansible_check_mode
+      changed_when: false
+
+    # ----------------------------------------
+
+    # 10. Перевірка встановлення
     - name: Verify Installation
       shell: |
         kubectl version --client && \
         minikube status && \
-        helm version
+        helm version && \
+        netstat -tuln | grep 8001
       register: install_verify
       changed_when: false
-      # Пропускаємо в режимі check, бо команди ще недоступні
       when: not ansible_check_mode
 
     - name: Show Verification Result
