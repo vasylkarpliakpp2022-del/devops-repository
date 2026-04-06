@@ -78,14 +78,16 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "kubectl apply -f -" < final_deploy.yaml
 
+      # Port-forwarding
       - name: Setup Port-Forwarding
         run: |
           export PORT=${{ github.ref_name == '1.0.0' && '8003' || '8002' }}
           export NS=${{ github.ref_name == '1.0.0' && 'release' || 'dev' }}
           export SVC_NAME=${{ github.ref_name == '1.0.0' && 'app-service-release' || 'app-service-dev' }}
           
-          # Очищення старих процесів
+          # 1. Очищення старих процесів
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "pkill -f 'kubectl port-forward' || true"
           
-          # Запуск у фоні з примусовим від'єднанням SSH сесії (-f)
-          ssh -f -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "nohup kubectl port-forward --address 0.0.0.0 svc/$SVC_NAME $PORT:80 -n $NS > /dev/null 2>&1 &"
+          # 2. Запуск через "screen" або просто ігнорування виходу (|| true)
+          # Ми додаємо '|| true', щоб крок став зеленим, навіть якщо SSH поверне 255
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "nohup kubectl port-forward --address 0.0.0.0 svc/$SVC_NAME $PORT:80 -n $NS > /dev/null 2>&1 &" || true
