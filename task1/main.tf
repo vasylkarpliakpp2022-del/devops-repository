@@ -7,7 +7,7 @@ terraform {
     
     region = "us-east-1" # Для DO Spaces це завжди us-east-1
     key    = "terraform.tfstate"
-    bucket = "karpliak-tfstate-bucket" # Назва бакета, який ти створив вручну
+    bucket = "karpliak-tfstate-bucket" # Назва бакета, який ти створив вручну для стану
 
     # Ці параметри критично важливі для роботи з DigitalOcean:
     skip_credentials_validation = true
@@ -69,6 +69,12 @@ resource "digitalocean_firewall" "exam_fw" {
     port_range            = "1-65535"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
+  # Додано UDP для коректної роботи DNS запитів всередині ВМ
+  outbound_rule {
+    protocol              = "udp"
+    port_range            = "1-65535"
+    destination_addresses = ["0.0.0.0/0", "::/0"]
+  }
 }
 
 # 3. Droplet (ВМ)
@@ -86,7 +92,7 @@ data "digitalocean_ssh_key" "my_key" {
   name = "karpliak_key" # Назва ключа, як він підписаний у DigitalOcean
 }
 
-# 4. Бакет
+# 4. Бакет (має створюватися самим Terraform'ом)
 resource "digitalocean_spaces_bucket" "exam_bucket" {
   name   = "karpliak-bucket"
   region = "fra1"
