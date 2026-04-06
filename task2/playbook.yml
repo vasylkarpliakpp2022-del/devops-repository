@@ -94,12 +94,8 @@
         kubectl version --client && \
         minikube status && \
         helm version && \
+        sleep 5 && \
         ss -tuln | grep 8001
       register: install_verify
       changed_when: false
-      when: not ansible_check_mode
-
-    - name: Show Verification Result
-      debug:
-        msg: "{{ install_verify.stdout_lines }}"
       when: not ansible_check_mode
