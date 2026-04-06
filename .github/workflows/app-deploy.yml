@@ -44,13 +44,22 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.DROPLET_IP }} >> ~/.ssh/known_hosts
 
+      # Новий крок: Перевірка та запуск Minikube, якщо він stopped
+      - name: Ensure Minikube is Running
+        run: |
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "
+            if ! minikube status | grep -q 'Running'; then
+              echo 'Minikube is not running. Starting...'
+              minikube start --driver=docker
+            else
+              echo 'Minikube is already running.'
+            fi
+          "
+
       - name: Prepare Deployment Manifest
         run: |
           export DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
-          
-          # Перевіряємо, чи ми на тегу 1.0.0
           if [[ "${{ github.ref_name }}" == "1.0.0" ]]; then
-            # Якщо файлу release-deployment.yaml немає, створюємо його з dev-deployment
             if [ ! -f task3/release-deployment.yaml ]; then
               sed 's/namespace: dev/namespace: release/g; s/name: dev/name: release/g; s/app-dev/app-release/g; s/app-service-dev/app-service-release/g; s/:dev/:1.0.0/g' task3/dev-deployment.yaml > task3/release-deployment.yaml
             fi
@@ -58,30 +67,25 @@ jobs:
           else
             export FILE_NAME="dev-deployment.yaml"
           fi
-          
-          # Підставляємо логін Docker Hub
           envsubst < task3/$FILE_NAME > final_deploy.yaml
           echo "FILE_NAME_USED=$FILE_NAME" >> $GITHUB_ENV
 
-      # Підстановка логіна та Dry-run (Вимога завдання)
       - name: Kubernetes Dry-run Check
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "kubectl apply -f - --dry-run=client" < final_deploy.yaml
 
-      # Реальний деплой
       - name: Deploy to Minikube
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "kubectl apply -f -" < final_deploy.yaml
 
-      # Port-forwarding
       - name: Setup Port-Forwarding
         run: |
           export PORT=${{ github.ref_name == '1.0.0' && '8003' || '8002' }}
           export NS=${{ github.ref_name == '1.0.0' && 'release' || 'dev' }}
           export SVC_NAME=${{ github.ref_name == '1.0.0' && 'app-service-release' || 'app-service-dev' }}
           
-          # 1. Вбиваємо старі процеси
+          # Очищення старих процесів
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "pkill -f 'kubectl port-forward' || true"
           
-          # 2. Запускаємо новий процес так, щоб SSH не чекав на його завершення
-          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "sleep 2 && nohup kubectl port-forward --address 0.0.0.0 svc/$SVC_NAME $PORT:80 -n $NS > /dev/null 2>&1 &"
+          # Запуск у фоні з примусовим від'єднанням SSH сесії (-f)
+          ssh -f -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "nohup kubectl port-forward --address 0.0.0.0 svc/$SVC_NAME $PORT:80 -n $NS > /dev/null 2>&1 &"
