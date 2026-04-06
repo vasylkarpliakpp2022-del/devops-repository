@@ -61,6 +61,8 @@
         name: root
         groups: docker
         append: yes
+      # ДОДАЙ ЦЕЙ РЯДОК:
+      when: not ansible_check_mode
 
     # 7. Запуск Minikube (вимога для перевірки встановлення)
     - name: Start Minikube with Docker driver
