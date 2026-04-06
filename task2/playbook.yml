@@ -76,26 +76,36 @@
       when: not ansible_check_mode
       changed_when: false
 
+    # 9. Запуск kubectl proxy з явним KUBECONFIG та логуванням
     - name: Start kubectl proxy in background
       shell: |
         pkill -f '[k]ubectl proxy' || true
-        sleep 2
-        setsid nohup kubectl proxy --address='0.0.0.0' --port=8001 --accept-hosts='.*' </dev/null >/dev/null 2>&1 &
-      async: 10 # Ansible зачекає 10 секунд і піде далі, не чекаючи завершення
-      poll: 0   # Вказує Ansible не перевіряти статус виконання команди
+        export KUBECONFIG=/root/.kube/config
+        nohup kubectl proxy --address='0.0.0.0' --port=8001 --accept-hosts='.*' > /var/log/kubectl-proxy.log 2>&1 &
+      args:
+        executable: /bin/bash
+      async: 10
+      poll: 0
       when: not ansible_check_mode
       changed_when: false
 
     # ----------------------------------------
 
-    # 10. Перевірка встановлення
-    - name: Verify Installation
+    # 10. Перевірка встановлення інструментів (без перевірки порту через ss)
+    - name: Verify CLI Tools Installation
       shell: |
         kubectl version --client && \
         minikube status && \
-        helm version && \
-        sleep 5 && \
-        ss -tuln | grep 8001
+        helm version
       register: install_verify
       changed_when: false
+      when: not ansible_check_mode
+
+    # 11. Очікування відкриття порту 8001
+    - name: Wait for kubectl proxy to open port 8001
+      wait_for:
+        port: 8001
+        delay: 2
+        timeout: 30
+        state: started
       when: not ansible_check_mode
