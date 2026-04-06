@@ -20,8 +20,7 @@ spec:
     spec:
       containers:
       - name: app
-        # ВИПРАВЛЕНО: синтаксис для envsubst (без ${{ }})
-        image: ${DOCKERHUB_USERNAME}/devops-app:dev 
+        image: ${DOCKERHUB_USERNAME}/devops-app:dev
         ports:
         - containerPort: 8080
 ---
@@ -31,7 +30,6 @@ metadata:
   name: app-service-dev
   namespace: dev
 spec:
-  # Залишаємо ClusterIP (дефолт), бо ми все одно робимо port-forward
   selector:
     app: my-app-dev
   ports:
