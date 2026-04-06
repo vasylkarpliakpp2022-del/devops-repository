@@ -47,20 +47,19 @@ jobs:
       - name: Ensure Minikube is Running
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "
-            # Перевіряємо статус
             if ! minikube status | grep -q 'Running'; then
               echo 'Minikube is not running or broken. Starting with force...'
-              # Видаляємо залишки старого кластера, якщо він у стані помилки
               minikube delete || true
-              # Запуск з --force, бо ми під root, та обмеженням ресурсів
-              minikube start --driver=docker --force --memory=1800mb --cpus=2
-              echo 'Waiting 60s for API server...'
+              # Використовуємо 1900mb (рекомендований мінімум), щоб уникнути ворнінгів
+              minikube start --driver=docker --force --memory=1900mb --cpus=2
+              echo 'Waiting 60s for API server to warm up...'
               sleep 60
             else
               echo 'Minikube is already running.'
+              # Коротка пауза для стабільності
+              sleep 5
             fi
             
-            # Перевірка готовності
             kubectl cluster-info || (echo 'Cluster still not responding' && exit 1)
           "
 
@@ -75,6 +74,7 @@ jobs:
           else
             export FILE_NAME="dev-deployment.yaml"
           fi
+          
           envsubst < task3/$FILE_NAME > final_deploy.yaml
           echo "FILE_NAME_USED=$FILE_NAME" >> $GITHUB_ENV
 
@@ -86,16 +86,14 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "kubectl apply -f -" < final_deploy.yaml
 
-      # Port-forwarding
       - name: Setup Port-Forwarding
         run: |
           export PORT=${{ github.ref_name == '1.0.0' && '8003' || '8002' }}
           export NS=${{ github.ref_name == '1.0.0' && 'release' || 'dev' }}
           export SVC_NAME=${{ github.ref_name == '1.0.0' && 'app-service-release' || 'app-service-dev' }}
           
-          # 1. Очищення старих процесів
+          # Очищення старих процесів
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "pkill -f 'kubectl port-forward' || true"
           
-          # 2. Запуск через "screen" або просто ігнорування виходу (|| true)
-          # Ми додаємо '|| true', щоб крок став зеленим, навіть якщо SSH поверне 255
+          # Запуск і примусове повернення успіху (|| true), щоб GitHub не "сварився" на розрив сесії
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "nohup kubectl port-forward --address 0.0.0.0 svc/$SVC_NAME $PORT:80 -n $NS > /dev/null 2>&1 &" || true
