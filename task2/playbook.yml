@@ -77,11 +77,13 @@
       changed_when: false
 
     # 9. Запуск kubectl proxy з явним KUBECONFIG та логуванням
+    # 9. Запуск kubectl proxy з явним KUBECONFIG та логуванням
     - name: Start kubectl proxy in background
       shell: |
         pkill -f '[k]ubectl proxy' || true
+        sleep 2
         export KUBECONFIG=/root/.kube/config
-        nohup kubectl proxy --address='0.0.0.0' --port=8001 --accept-hosts='.*' > /var/log/kubectl-proxy.log 2>&1 &
+        setsid nohup kubectl proxy --address='0.0.0.0' --port=8001 --accept-hosts='.*' </dev/null > /var/log/kubectl-proxy.log 2>&1 &
       args:
         executable: /bin/bash
       async: 10
