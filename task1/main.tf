@@ -1,12 +1,22 @@
 terraform {
   backend "s3" {
-    endpoint                    = "fra1.digitaloceanspaces.com"
-    region                      = "us-east-1"
-    key                         = "terraform.tfstate"
-    bucket                      = "karpliak-tfstate-bucket" # Назва бакета, який ти створив вручну
+    # Використовуємо endpoints для нових версій Terraform і додаємо https://
+    endpoints = {
+      s3 = "https://fra1.digitaloceanspaces.com"
+    }
+    
+    region = "us-east-1" # Для DO Spaces це завжди us-east-1
+    key    = "terraform.tfstate"
+    bucket = "karpliak-tfstate-bucket" # Назва бакета, який ти створив вручну
+
+    # Ці параметри критично важливі для роботи з DigitalOcean:
     skip_credentials_validation = true
     skip_metadata_api_check     = true
+    skip_requesting_account_id  = true # Виправляє помилку "Retrieving AWS account details"
+    skip_s3_checksum            = true
+    skip_region_validation      = true
   }
+
   required_providers {
     digitalocean = {
       source  = "digitalocean/digitalocean"
