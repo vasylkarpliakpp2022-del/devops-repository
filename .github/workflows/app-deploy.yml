@@ -86,17 +86,24 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "kubectl apply -f -" < final_deploy.yaml
 
-      # Port-forwarding (Версія "Super-Safe" для GitHub Actions)
-      - name: Setup Port-Forwarding
+      - name: Ensure Minikube is Running
         run: |
-          export PORT=${{ github.ref_name == '1.0.0' && '8003' || '8002' }}
-          export NS=${{ github.ref_name == '1.0.0' && 'release' || 'dev' }}
-          export SVC_NAME=${{ github.ref_name == '1.0.0' && 'app-service-release' || 'app-service-dev' }}
-          
-          # 1. Очищення старих процесів (тут чекаємо на відповідь)
-          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "pkill -f 'kubectl port-forward' || true"
-          
-          # 2. Запуск через SSH з флагами -f (background) та -n (redirect stdin)
-          # Ми використовуємо 'exit 0' всередині лапок, щоб SSH закрився коректно
-          ssh -f -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} \
-            "nohup kubectl port-forward --address 0.0.0.0 svc/$SVC_NAME $PORT:80 -n $NS > /dev/null 2>&1 & sleep 1 && exit 0" || echo "Ignoring SSH exit code"
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "
+            # Перевіряємо, чи фактично відповідає Kubernetes API
+            if ! kubectl cluster-info > /dev/null 2>&1; then
+              echo 'Minikube is not responding or broken. Restarting...'
+              minikube delete || true
+              
+              # Запускаємо кластер
+              minikube start --driver=docker --force --memory=1900mb --cpus=2
+              
+              echo 'Waiting for node to become Ready...'
+              # Чекаємо, поки нода підніметься, замість статичного sleep
+              kubectl wait --for=condition=Ready nodes --all --timeout=60s || sleep 30
+            else
+              echo 'Minikube is already running and healthy.'
+            fi
+            
+            # Фінальна перевірка
+            kubectl cluster-info || (echo 'Cluster still not responding' && exit 1)
+          "
