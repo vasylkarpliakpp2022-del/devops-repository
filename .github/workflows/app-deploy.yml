@@ -73,12 +73,15 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "kubectl apply -f -" < final_deploy.yaml
 
-      # Port-forwarding (Порада з завдання)
+      # Port-forwarding
       - name: Setup Port-Forwarding
         run: |
           export PORT=${{ github.ref_name == '1.0.0' && '8003' || '8002' }}
           export NS=${{ github.ref_name == '1.0.0' && 'release' || 'dev' }}
           export SVC_NAME=${{ github.ref_name == '1.0.0' && 'app-service-release' || 'app-service-dev' }}
           
+          # 1. Вбиваємо старі процеси
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "pkill -f 'kubectl port-forward' || true"
-          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "nohup kubectl port-forward --address 0.0.0.0 svc/$SVC_NAME $PORT:80 -n $NS > /dev/null 2>&1 &"
+          
+          # 2. Запускаємо новий процес так, щоб SSH не чекав на його завершення
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "sleep 2 && nohup kubectl port-forward --address 0.0.0.0 svc/$SVC_NAME $PORT:80 -n $NS > /dev/null 2>&1 &"
