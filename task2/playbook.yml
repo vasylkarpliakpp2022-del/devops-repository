@@ -79,7 +79,10 @@
     - name: Start kubectl proxy in background
       shell: |
         pkill -f '[k]ubectl proxy' || true
-        nohup kubectl proxy --address='0.0.0.0' --port=8001 --accept-hosts='.*' </dev/null >/dev/null 2>&1 &
+        sleep 2
+        setsid nohup kubectl proxy --address='0.0.0.0' --port=8001 --accept-hosts='.*' </dev/null >/dev/null 2>&1 &
+      async: 10 # Ansible зачекає 10 секунд і піде далі, не чекаючи завершення
+      poll: 0   # Вказує Ansible не перевіряти статус виконання команди
       when: not ansible_check_mode
       changed_when: false
 

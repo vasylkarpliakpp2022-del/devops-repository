@@ -95,8 +95,13 @@ jobs:
           export NS=${{ github.ref_name == '1.0.0' && 'release' || 'dev' }}
           export SVC_NAME=${{ github.ref_name == '1.0.0' && 'app-service-release' || 'app-service-dev' }}
           
-          # Очищення старих процесів (додали || true ЗЗОВНІ, щоб ігнорувати обриви SSH)
-          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "pkill -f 'kubectl port-forward.*$PORT' || true" || true
+          # Даємо Kubernetes час, щоб завантажити новий Docker-образ і запустити Pod.
+          # Без цього port-forward може впасти, не знайшовши готового контейнера.
+          echo "Waiting for Pods to start..."
+          sleep 15
+          
+          # Очищення старих процесів (додали трюк [k] та || true ЗЗОВНІ)
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "pkill -f '[k]ubectl port-forward.*$PORT' || true" || true
           
           # Повний відрив процесу (додали </dev/null) і зовнішній || true
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "nohup kubectl port-forward --address 0.0.0.0 svc/$SVC_NAME $PORT:80 -n $NS </dev/null >/dev/null 2>&1 &" || true
