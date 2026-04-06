@@ -80,7 +80,8 @@
     # Використовуємо порт 8001, який ми відкрили в Terraform
     - name: Start kubectl proxy in background
       shell: |
-        nohup kubectl proxy --address='0.0.0.0' --port=8001 --accept-hosts='.*' > /dev/null 2>&1 &
+        pkill -f 'kubectl proxy' || true
+        nohup kubectl proxy --address='0.0.0.0' --port=8001 --accept-hosts='.*' </dev/null >/dev/null 2>&1 &
       when: not ansible_check_mode
       changed_when: false
 
