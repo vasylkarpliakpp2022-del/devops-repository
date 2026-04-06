@@ -94,6 +94,6 @@ data "digitalocean_ssh_key" "my_key" {
 
 # 4. Бакет (має створюватися самим Terraform'ом)
 resource "digitalocean_spaces_bucket" "exam_bucket" {
-  name   = "karpliak-bucket"
+  name   = "vkarpliak-bucket"
   region = "fra1"
 }
