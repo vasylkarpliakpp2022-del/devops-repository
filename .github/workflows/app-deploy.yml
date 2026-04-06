@@ -98,6 +98,5 @@ jobs:
           # Очищення старих процесів port-forward для конкретного порту
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "pkill -f 'kubectl port-forward.*$PORT' || true"
           
-          # Запуск port-forward у фоновому режимі (nohup + &)
-          ssh -f -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} \
-            "nohup kubectl port-forward --address 0.0.0.0 svc/$SVC_NAME $PORT:80 -n $NS > /dev/null 2>&1 & sleep 2"
+          # Запуск port-forward (БЕЗ прапорця -f, але з повним перенаправленням потоків)
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "nohup kubectl port-forward --address 0.0.0.0 svc/$SVC_NAME $PORT:80 -n $NS </dev/null >/dev/null 2>&1 &"
