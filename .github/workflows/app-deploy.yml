@@ -89,19 +89,42 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "kubectl apply -f -" < final_deploy.yaml
 
-      - name: Setup Port-Forwarding
+      - name: Setup Port-Forwarding via Systemd
         run: |
-          export PORT=${{ github.ref_name == '1.0.0' && '8003' || '8002' }}
-          export NS=${{ github.ref_name == '1.0.0' && 'release' || 'dev' }}
-          export SVC_NAME=${{ github.ref_name == '1.0.0' && 'app-service-release' || 'app-service-dev' }}
+          # Визначаємо змінні залежно від гілки/тегу
+          PORT=${{ github.ref_name == '1.0.0' && '8003' || '8002' }}
+          NS=${{ github.ref_name == '1.0.0' && 'release' || 'dev' }}
+          SVC_NAME=${{ github.ref_name == '1.0.0' && 'app-service-release' || 'app-service-dev' }}
           
-          # Даємо Kubernetes час, щоб завантажити новий Docker-образ і запустити Pod.
-          # Без цього port-forward може впасти, не знайшовши готового контейнера.
+          # Даємо час K8s на запуск Pod'ів
           echo "Waiting for Pods to start..."
           sleep 15
           
-          # Очищення старих процесів (додали трюк [k] та || true ЗЗОВНІ)
-          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "pkill -f '[k]ubectl port-forward.*$PORT' || true" || true
+          # Створюємо bash-скрипт прямо на GitHub Runner
+          cat <<EOF > setup-pf.sh
+          #!/bin/bash
+          # Цей код створить systemd-сервіс для конкретного порту
+          cat <<INNER_EOF > /etc/systemd/system/port-forward-\$PORT.service
+          [Unit]
+          Description=Kubernetes Port Forward for \$SVC_NAME on port \$PORT
+          After=network.target
+
+          [Service]
+          User=root
+          Environment=KUBECONFIG=/root/.kube/config
+          ExecStart=/usr/local/bin/kubectl port-forward --address 0.0.0.0 svc/\$SVC_NAME \$PORT:80 -n \$NS
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          INNER_EOF
           
-          # Повний відрив процесу (додали </dev/null) і зовнішній || true
-          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "nohup kubectl port-forward --address 0.0.0.0 svc/$SVC_NAME $PORT:80 -n $NS </dev/null >/dev/null 2>&1 &" || true
+          # Перезавантажуємо systemd та запускаємо наш новий сервіс
+          systemctl daemon-reload
+          systemctl enable port-forward-\$PORT.service
+          systemctl restart port-forward-\$PORT.service
+          EOF
+          
+          # Виконуємо цей згенерований скрипт на твоєму сервері через SSH
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "PORT=$PORT SVC_NAME=$SVC_NAME NS=$NS bash -s" < setup-pf.sh
