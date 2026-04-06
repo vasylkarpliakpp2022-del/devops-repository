@@ -1,0 +1,35 @@
+name: "Task 3: App Rollback"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Оберіть середовище для відкоту'
+        required: true
+        type: choice
+        options:
+          - dev
+          - release
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.DROPLET_IP }} >> ~/.ssh/known_hosts
+
+      - name: Perform Kubernetes Rollback
+        run: |
+          ENV=${{ github.event.inputs.environment }}
+          DEPLOYMENT_NAME="app-${ENV}"
+          
+          echo "Starting rollback for deployment $DEPLOYMENT_NAME in namespace $ENV..."
+          
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "kubectl rollout undo deployment/$DEPLOYMENT_NAME -n $ENV"
+          
+          echo "Rollback command sent successfully. Checking status..."
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "kubectl rollout status deployment/$DEPLOYMENT_NAME -n $ENV"

@@ -1,0 +1,34 @@
+name: "Task 1: Terraform DESTROY (Danger Zone)"
+
+on:
+  workflow_dispatch: # Дозволяє запускати цей пайплайн ТІЛЬКИ вручну
+
+jobs:
+  terraform-destroy:
+    runs-on: ubuntu-latest
+    
+    env:
+      TF_VAR_do_token: ${{ secrets.DO_PAT }}
+      TF_VAR_spaces_access_key: ${{ secrets.SPACES_ACCESS_KEY }}
+      TF_VAR_spaces_secret_key: ${{ secrets.SPACES_SECRET_KEY }}
+      
+      AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+    
+    defaults:
+      run:
+        working-directory: ./task1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Destroy
+        # Ця команда видалить усі ресурси, створені в DigitalOcean
+        run: terraform destroy -auto-approve
