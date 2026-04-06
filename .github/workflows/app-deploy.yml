@@ -44,24 +44,24 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.DROPLET_IP }} >> ~/.ssh/known_hosts
 
-      # Оновлений крок з очікуванням готовності API-сервера
       - name: Ensure Minikube is Running
         run: |
           ssh -i ~/.ssh/id_rsa root@${{ secrets.DROPLET_IP }} "
+            # Перевіряємо статус
             if ! minikube status | grep -q 'Running'; then
-              echo 'Minikube is not running. Starting...'
-              minikube start --driver=docker
-              # Чекаємо 60 секунд, поки API-сервер стане доступним
-              echo 'Waiting for API server to be ready...'
+              echo 'Minikube is not running or broken. Starting with force...'
+              # Видаляємо залишки старого кластера, якщо він у стані помилки
+              minikube delete || true
+              # Запуск з --force, бо ми під root, та обмеженням ресурсів
+              minikube start --driver=docker --force --memory=1800mb --cpus=2
+              echo 'Waiting 60s for API server...'
               sleep 60
             else
               echo 'Minikube is already running.'
-              # На всякий випадок теж трохи почекаємо, якщо він щойно ввімкнувся
-              sleep 10
             fi
             
-            # Перевірка зв'язку перед виходом
-            kubectl cluster-info || (minikube delete && minikube start --driver=docker && sleep 60)
+            # Перевірка готовності
+            kubectl cluster-info || (echo 'Cluster still not responding' && exit 1)
           "
 
       - name: Prepare Deployment Manifest
