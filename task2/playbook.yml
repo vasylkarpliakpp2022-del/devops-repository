@@ -1,36 +1,80 @@
 ---
-- name: Setup Kubernetes Environment
+- name: "Task 2: Install DevOps Components (K8s, Minikube, Helm)"
   hosts: all
   become: yes
+  vars:
+    # Параметричне завдання версій (можна змінювати за потреби)
+    minikube_version: "latest"
+    helm_version: "latest"
+
   tasks:
+    # 1. Оновлення пакетів та встановлення базових залежностей
+    - name: Update apt cache and install basic tools
+      apt:
+        update_cache: yes
+        name:
+          - curl
+          - apt-transport-https
+          - ca-certificates
+          - gnupg
+          - conntrack
+        state: present
+
+    # 2. Встановлення Docker (використовуємо його як драйвер для Minikube)
     - name: Install Docker
       apt:
         name: docker.io
         state: present
-        update_cache: yes
 
-    - name: Add user to docker group
-      user:
-        name: root
-        groups: docker
-        append: yes
+    - name: Ensure Docker is started and enabled
+      service:
+        name: docker
+        state: started
+        enabled: yes
 
-    - [cite_start]name: Install Minikube [cite: 34]
+    # 3. Встановлення kubectl (Kubernetes CLI)
+    - name: Download kubectl binary
+      get_url:
+        url: "https://dl.k8s.io/release/{{ lookup('pipe', 'curl -L -s https://dl.k8s.io/release/stable.txt') }}/bin/linux/amd64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+
+    # 4. Встановлення Minikube
+    - name: Download and Install Minikube
       get_url:
         url: https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
         dest: /usr/local/bin/minikube
         mode: '0755'
 
-    - [cite_start]name: Install kubectl [cite: 33]
-      snap:
-        name: kubectl
-        classic: yes
+    # 5. Встановлення Helm
+    - name: Install Helm via official script
+      shell: |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
 
-    - [cite_start]name: Install Helm [cite: 35]
-      snap:
-        name: helm
-        classic: yes
+    # 6. Налаштування прав для користувача (щоб запускати minikube без sudo)
+    - name: Add current user to docker group
+      user:
+        name: root
+        groups: docker
+        append: yes
 
+    # 7. Запуск Minikube (вимога для перевірки встановлення)
     - name: Start Minikube with Docker driver
       command: minikube start --driver=docker --force
-      become_user: root
+      become: yes
+      changed_when: false
+
+    # 8. Перевірка встановлення компонентів (Validation)
+    - name: Verify Installation
+      shell: |
+        kubectl version --client && \
+        minikube status && \
+        helm version
+      register: install_verify
+      changed_when: false
+
+    - name: Show Verification Result
+      debug:
+        msg: "{{ install_verify.stdout_lines }}"
